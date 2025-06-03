@@ -36,9 +36,41 @@ async function run() {
 
         // jobs api 
         app.get('/jobs', async (req, res) => {
-            const result = await jobsCollection.find().toArray();
+            const email = req.query.email;
+            const query = {}
+            if (email) {
+                query.hr_email = email;
+            }
+            const result = await jobsCollection.find(query).toArray();
             res.send(result)
         })
+
+        app.get('/applications/job/:job_id', async (req, res) => {
+            const job_id = req.params.job_id;
+            console.log(job_id)
+            const query = { id: job_id }
+            const result = await applicatiosCollectin.find(query).toArray()
+            res.send(result)
+        })
+
+        // could be done but should nat be done
+        // app.get('/jobsByEmailAddress', async (req, res) => {
+        //     const email = req.query.email;
+        //     const query = { hr_email: email }
+        //     const result = await jobsCollection.find(query).toArray()
+        //     res.send(result)
+        // })
+
+
+        // job post
+
+        app.post('/jobs', async (req, res) => {
+            const newJob = req.body;
+            console.log(newJob)
+            const result = await jobsCollection.insertOne(newJob)
+            res.send(result)
+        })
+
 
         // find one data
 
@@ -62,20 +94,20 @@ async function run() {
         app.get('/applications', async (req, res) => {
             const email = req.query.email;
             const query = {
-                applicant : email
+                applicant: email
             }
 
 
             const result = await applicatiosCollectin.find(query).toArray()
 
-              // bad way to aggregate data 
+            // bad way to aggregate data 
             for (const application of result) {
                 const jobId = application.id;
                 const jobQuery = { _id: new ObjectId(jobId) }
                 const job = await jobsCollection.findOne(jobQuery)
                 application.company = job.company
                 application.title = job.title
-                application.company_logo =job.company_logo
+                application.company_logo = job.company_logo
             }
 
 
