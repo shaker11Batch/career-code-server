@@ -1,13 +1,43 @@
 const express = require('express')
 const cors = require('cors')
 const app = express()
+const jwt = require('jsonwebtoken')
+const cookieParser = require('cookie-parser')
 const port = process.env.PORT || 5000;
 
 require('dotenv').config()
 // middleware 
-app.use(cors())
+app.use(cors(
+    {
+        origin: ['http://localhost:5173'],
+        credentials: true
+    }
+))
 app.use(express.json())
+app.use(cookieParser())
 
+// const logger = (req, res, next) => {
+//     console.log('inside the logger middlerware')
+//     next()
+// }
+
+const verifyToken = (req, res, next) => {
+    const token = req?.cookies?.token;
+    // 1st token na takle 
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+    // virefy token 
+    jwt.verify(token, process.env.JWT_ACCESS_SECRET,
+        (err, decoded) => {
+            if (err) {
+                return res.status(401).send({ message: 'unauthorized access' })
+            }
+            req.decoded = decoded;
+            next()
+        }
+    )
+}
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -34,6 +64,24 @@ async function run() {
         const applicatiosCollectin = client.db('JobCareer').collection('applications')
 
 
+        // jwt token related apis 
+
+        app.post('/jwt', async (req, res) => {
+            const userInfo = req.body;
+            console.log(userInfo)
+            const token = jwt.sign(userInfo, process.env.JWT_ACCESS_SECRET,
+                { expiresIn: '2h' })
+
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: false
+            })
+
+            res.send({ success: true })
+        })
+
+
+
         // jobs api 
         app.get('/jobs', async (req, res) => {
             const email = req.query.email;
@@ -45,6 +93,21 @@ async function run() {
             res.send(result)
         })
 
+        // job koita apply korche 
+        app.get('/jobs/applications',verifyToken, async (req, res) => {
+            const email = req.query.email;
+            const query = { hr_email: email }
+            const jobs = await jobsCollection.find(query).toArray()
+            // should use aggregate to have optimum data fetching
+            for (const job of jobs) {
+                const applicationQuery = { id: job._id.toString() }
+                const application_count = await applicatiosCollectin.countDocuments(applicationQuery)
+                job.application_count = application_count
+            }
+            res.send(jobs)
+        })
+
+
         app.get('/applications/job/:job_id', async (req, res) => {
             const job_id = req.params.job_id;
             console.log(job_id)
@@ -53,6 +116,16 @@ async function run() {
             res.send(result)
         })
 
+        app.patch('/applications/:id', async (req, res) => {
+            const id = req.params.id
+            console.log(id)
+            const filter = { _id: new ObjectId(id) }
+            const updateDoc = {
+                $set: req.body.status
+            }
+            const result = await applicatiosCollectin.updateOne(filter, updateDoc)
+            res.send(result)
+        })
         // could be done but should nat be done
         // app.get('/jobsByEmailAddress', async (req, res) => {
         //     const email = req.query.email;
@@ -93,10 +166,14 @@ async function run() {
 
         app.get('/applications', async (req, res) => {
             const email = req.query.email;
+            // console.log('insite applications', req.cookies)
+            // if (email !== req.decoded.email) {
+            //     return res.status(403).send({ message: 'forbidden access' })
+            // }
+
             const query = {
                 applicant: email
             }
-
 
             const result = await applicatiosCollectin.find(query).toArray()
 
